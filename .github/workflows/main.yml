@@ -18,15 +18,19 @@ jobs:
     timeout-minutes: 30
 
     env:
-      PAYMOB_KSA_USERNAME:   ${{ secrets.PAYMOB_KSA_USERNAME }}
-      PAYMOB_KSA_PASSWORD:   ${{ secrets.PAYMOB_KSA_PASSWORD }}
-      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      PAYMOB_KSA_USERNAME: ${{ secrets.PAYMOB_KSA_USERNAME }}
+      PAYMOB_KSA_PASSWORD: ${{ secrets.PAYMOB_KSA_PASSWORD }}
+
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION:    ap-southeast-1
-      S3_BUCKET:             payout-recon
-      S3_PAYMOB_KSA_PREFIX:  paymob/ksa/Weekly/raw/
+
+      AWS_DEFAULT_REGION: ap-southeast-1
+
+      S3_BUCKET: payout-recon
+      S3_PAYMOB_KSA_PREFIX: paymob/ksa/Weekly/raw/
+
       PAYMOB_KSA_S3_ENABLED: "true"
-      CI:                    "true"
+      CI: "true"
 
     steps:
       - name: Checkout repository
@@ -48,24 +52,49 @@ jobs:
           pip install playwright boto3 botocore
 
       - name: Install Chromium
-        run: playwright install chromium --with-deps
+        run: |
+          playwright install chromium --with-deps
+
+      - name: Verify repository files
+        run: |
+          echo "Current directory:"
+          pwd
+
+          echo "Repository files:"
+          ls -la
+
+          echo "Checking Python file..."
+          if [ ! -f "PayMob_KSA.py" ]; then
+            echo "ERROR: PayMob_KSA.py not found"
+            exit 1
+          fi
+
+          echo "PayMob_KSA.py found successfully"
 
       - name: Run PayMob KSA export
         run: |
           ARGS=""
+
           if [ -n "${{ github.event.inputs.start_date }}" ]; then
             ARGS="$ARGS --start_date ${{ github.event.inputs.start_date }}"
           fi
+
           if [ -n "${{ github.event.inputs.end_date }}" ]; then
             ARGS="$ARGS --end_date ${{ github.event.inputs.end_date }}"
           fi
+
+          echo "Running script with args: $ARGS"
+
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
-            python paymob_ksa_transactions.py $ARGS
+            python PayMob_KSA.py $ARGS
 
       - name: Upload debug screenshots on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: debug-screenshots-${{ github.run_id }}
-          path: paymob_ksa_*.png
+          path: |
+            *.png
+            *.jpg
+            *.jpeg
           retention-days: 7
