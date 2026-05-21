@@ -1,0 +1,71 @@
+name: PayMob KSA Transactions Export
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date (YYYY-MM-DD). Defaults to 10 days ago."
+        required: false
+        default: ""
+      end_date:
+        description: "End date (YYYY-MM-DD). Defaults to today."
+        required: false
+        default: ""
+
+jobs:
+  paymob-ksa-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      PAYMOB_KSA_USERNAME:   ${{ secrets.PAYMOB_KSA_USERNAME }}
+      PAYMOB_KSA_PASSWORD:   ${{ secrets.PAYMOB_KSA_PASSWORD }}
+      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION:    ap-southeast-1
+      S3_BUCKET:             payout-recon
+      S3_PAYMOB_KSA_PREFIX:  paymob/ksa/Weekly/raw/
+      PAYMOB_KSA_S3_ENABLED: "true"
+      CI:                    "true"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y xvfb
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright boto3 botocore
+
+      - name: Install Chromium
+        run: playwright install chromium --with-deps
+
+      - name: Run PayMob KSA export
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.start_date }}" ]; then
+            ARGS="$ARGS --start_date ${{ github.event.inputs.start_date }}"
+          fi
+          if [ -n "${{ github.event.inputs.end_date }}" ]; then
+            ARGS="$ARGS --end_date ${{ github.event.inputs.end_date }}"
+          fi
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            python paymob_ksa_transactions.py $ARGS
+
+      - name: Upload debug screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots-${{ github.run_id }}
+          path: paymob_ksa_*.png
+          retention-days: 7
